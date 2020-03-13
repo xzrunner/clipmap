@@ -1,0 +1,5 @@
+clipmap/
+projects/*
+
+!projects/clipmap.vcxproj
+!projects/clipmap.vcxproj.filters
