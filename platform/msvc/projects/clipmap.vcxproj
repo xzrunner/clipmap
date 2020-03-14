@@ -12,9 +12,13 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\..\..\include\clipmap\Clipmap.h" />
+    <ClInclude Include="..\..\..\include\clipmap\PageCache.h" />
+    <ClInclude Include="..\..\..\include\clipmap\TextureStack.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="..\..\..\source\Clipmap.cpp" />
+    <ClCompile Include="..\..\..\source\PageCache.cpp" />
+    <ClCompile Include="..\..\..\source\TextureStack.cpp" />
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <ProjectName>3.clipmap</ProjectName>
@@ -59,7 +63,7 @@
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <ClCompile>
       <Optimization>Disabled</Optimization>
-      <AdditionalIncludeDirectories>..\..\..\include;..\..\..\..\external\boost\include;</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>..\..\..\include;..\..\..\..\cu\src;..\..\..\..\sm\src\sm;..\..\..\..\multitask\include;..\..\..\..\textile\include;..\..\..\..\unirender\include;..\..\..\..\painting2\include;..\..\..\..\tessellation\include;..\..\..\..\external\boost\include;</AdditionalIncludeDirectories>
       <PreprocessorDefinitions>WIN32;_DEBUG;_LIB;_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <MinimalRebuild>true</MinimalRebuild>
       <BasicRuntimeChecks>EnableFastChecks</BasicRuntimeChecks>
@@ -73,7 +77,7 @@
     <ClCompile>
       <Optimization>MaxSpeed</Optimization>
       <IntrinsicFunctions>true</IntrinsicFunctions>
-      <AdditionalIncludeDirectories>..\..\..\include;..\..\..\..\external\boost\include;</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>..\..\..\include;..\..\..\..\cu\src;..\..\..\..\sm\src\sm;..\..\..\..\multitask\include;..\..\..\..\textile\include;..\..\..\..\unirender\include;..\..\..\..\painting2\include;..\..\..\..\tessellation\include;..\..\..\..\external\boost\include;</AdditionalIncludeDirectories>
       <PreprocessorDefinitions>WIN32;NDEBUG;_LIB;_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
       <FunctionLevelLinking>true</FunctionLevelLinking>
