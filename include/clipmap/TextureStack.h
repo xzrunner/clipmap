@@ -23,26 +23,31 @@ public:
 
     void Update(PageCache& cache, const sm::rect& viewport,
         float scale, const sm::vec2& offset);
-    void Draw(float scale, const sm::vec2& offset,
-        float screen_width, float screen_height) const;
+    void Draw(float screen_width, float screen_height) const;
 
 private:
     void AddPage(const textile::Page& page, const ur::TexturePtr& tex,
         const sm::rect& region);
 
-    void DrawTexture(float scale, const sm::vec2& offset,
-        float screen_width, float screen_height) const;
-    void DrawDebug(float scale, const sm::vec2& offset) const;
+    void DrawTexture(float screen_width, float screen_height) const;
+    void DrawDebug() const;
 
-    void TraverseDiffPages(const sm::rect& old_r, const sm::rect& new_r,
+    void TraverseDiffPages(const sm::rect& region, size_t start_layer,
         std::function<void(const textile::Page& page, const sm::rect& region)> cb);
-    void TraversePages(const sm::rect& region,
+    void TraversePages(const sm::rect& region, size_t start_layer,
         std::function<void(const textile::Page& page, const sm::rect& region)> cb);
+
+    size_t CalcMipmapLevel(float scale) const;
 
 private:
     struct Layer
     {
+        Layer() {
+            region.MakeEmpty();
+        }
+
         ur::TexturePtr tex = nullptr;
+        sm::rect region;
     };
 
 private:
@@ -54,7 +59,8 @@ private:
     std::shared_ptr<ur::Shader> m_update_shader = nullptr;
     mutable std::shared_ptr<ur::Shader> m_final_shader = nullptr;
 
-    sm::rect m_region;
+    float    m_scale = 1.0f;
+    sm::vec2 m_offset;
 
 }; // TextureStack
 

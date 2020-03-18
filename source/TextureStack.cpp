@@ -82,7 +82,7 @@ void main()
     vec2 uv = position.xy;
     vec2 pos = uv * 2 - 1;
 
-	vs_out.texcoord = uv * u_scale + u_offset;
+	vs_out.texcoord = (uv + u_offset) * u_scale;
 	gl_Position = u_view_mat * vec4(pos, 0, 1);
 }
 
@@ -116,8 +116,6 @@ TextureStack::TextureStack(const textile::VTexInfo& info)
 {
     auto mip_count = static_cast<int>(std::log2(std::min(info.PageTableWidth(), info.PageTableHeight()))) + 1;
     m_layers.resize(mip_count);
-
-    m_region.MakeEmpty();
 }
 
 TextureStack::~TextureStack()
@@ -129,7 +127,7 @@ TextureStack::~TextureStack()
 }
 
 void TextureStack::Update(PageCache& cache, const sm::rect& viewport,
-                          float scale, const sm::vec2& offset)
+    float scale, const sm::vec2& offset)
 {
     auto& rc = ur::Blackboard::Instance()->GetRenderContext();
 
@@ -162,26 +160,34 @@ void TextureStack::Update(PageCache& cache, const sm::rect& viewport,
         m_update_shader = std::make_shared<ur::Shader>(&rc, update_vs, update_fs, textures, layout);
     }
 
+    m_scale = std::min(std::min(m_vtex_info.vtex_width / viewport.Width(), m_vtex_info.vtex_height / viewport.Height()), scale);
+    m_offset.x = std::max(0.0f, std::min(offset.x, m_vtex_info.vtex_width - viewport.Width() * m_scale));
+    m_offset.y = std::max(0.0f, std::min(offset.y, m_vtex_info.vtex_height - viewport.Height() * m_scale));
+
     sm::rect region = viewport;
-    region.Translate(offset);
+    region.Translate(m_offset);
+    region.Scale(sm::vec2(m_scale, m_scale));
+
+    const int mipmap_level = CalcMipmapLevel(m_scale);
 
     // load pages
-    TraverseDiffPages(m_region, region, [&cache](const textile::Page& page, const sm::rect& r) {
+    TraverseDiffPages(region, mipmap_level, [&cache](const textile::Page& page, const sm::rect& r) {
         cache.Request(page);
     });
 
     // update levels
-    TraverseDiffPages(m_region, region, [&](const textile::Page& page, const sm::rect& r) {
+    TraverseDiffPages(region, mipmap_level, [&](const textile::Page& page, const sm::rect& r) {
         auto tex = cache.QueryPageTex(page);
         assert(tex);
         AddPage(page, tex, r);
     });
 
-    m_region = region;
+    for (size_t i = mipmap_level, n = m_layers.size(); i < n; ++i) {
+        m_layers[i].region = region;
+    }
 }
 
-void TextureStack::Draw(float scale, const sm::vec2& offset,
-                        float screen_width, float screen_height) const
+void TextureStack::Draw(float screen_width, float screen_height) const
 {
     assert(!m_layers.empty());
     if (!m_layers[0].tex) {
@@ -192,8 +198,8 @@ void TextureStack::Draw(float scale, const sm::vec2& offset,
     rc.SetZTest(ur::DEPTH_DISABLE);
     rc.SetCullMode(ur::CULL_DISABLE);
 
-    DrawTexture(scale, offset, screen_width, screen_height);
-    DrawDebug(scale, offset);
+    DrawTexture(screen_width, screen_height);
+    DrawDebug();
 
     rc.SetZTest(ur::DEPTH_LESS_EQUAL);
     rc.SetCullMode(ur::CULL_BACK);
@@ -259,8 +265,7 @@ void TextureStack::AddPage(const textile::Page& page, const ur::TexturePtr& tex,
     rc.SetCullMode(ur::CULL_BACK);
 }
 
-void TextureStack::DrawTexture(float scale, const sm::vec2& offset,
-                               float screen_width, float screen_height) const
+void TextureStack::DrawTexture(float screen_width, float screen_height) const
 {
     auto& rc = ur::Blackboard::Instance()->GetRenderContext();
     if (!m_final_shader)
@@ -274,9 +279,7 @@ void TextureStack::DrawTexture(float scale, const sm::vec2& offset,
         m_final_shader = std::make_shared<ur::Shader>(&rc, final_vs, final_fs, textures, layout);
     }
 
-    float layer = log(1.0f / scale) / log(0.5f);
-    layer = std::min(static_cast<float>(m_layers.size() - 1), std::max(0.0f, layer));
-    const uint32_t finer_layer = static_cast<uint32_t>(layer);
+    const uint32_t finer_layer = CalcMipmapLevel(m_scale);
     const uint32_t coarser_layer = finer_layer < m_layers.size() - 1 ? finer_layer + 1 : finer_layer;
     m_final_shader->SetUsedTextures({
         m_layers[finer_layer].tex->TexID(),
@@ -287,22 +290,22 @@ void TextureStack::DrawTexture(float scale, const sm::vec2& offset,
     sm::mat4 view_mat = sm::mat4::Scaled(TEX_SIZE / screen_width, TEX_SIZE / screen_height, 1);
     m_final_shader->SetMat4("u_view_mat", view_mat.x);
 
-    m_final_shader->SetFloat("u_scale", scale);
-    m_final_shader->SetVec2("u_offset", (offset / 500).xy);
+    m_final_shader->SetFloat("u_scale", m_scale / static_cast<float>(std::pow(2, finer_layer)));
+    m_final_shader->SetVec2("u_offset", (m_offset / TEX_SIZE).xy);
 
     rc.RenderQuad(ur::RenderContext::VertLayout::VL_POS, true);
 
     rc.BindShader(0);
 }
 
-void TextureStack::DrawDebug(float scale, const sm::vec2& offset) const
+void TextureStack::DrawDebug() const
 {
     tess::Painter pt;
 
     // region
     sm::Matrix2D mt;
-    mt.Scale(scale, scale);
-    mt.Translate(offset.x, offset.y);
+    mt.Scale(m_scale, m_scale);
+    mt.Translate(m_offset.x, m_offset.y);
 
     const float h_sz = TEX_SIZE * 0.5f;
     pt.AddRect(mt * sm::vec2(-h_sz, -h_sz), mt * sm::vec2(h_sz, h_sz), 0xff0000ff);
@@ -314,105 +317,115 @@ void TextureStack::DrawDebug(float scale, const sm::vec2& offset) const
     const float space = 4;
     for (size_t i = 0, n = m_layers.size(); i < n; ++i)
     {
+        auto& layer = m_layers[i];
+
         const float x = sx + (size + space) * i;
         sm::rect region(x, sy, x + size, sy + size);
-        pt2::RenderSystem::DrawTexture(*m_layers[i].tex, region, mt, false);
+        pt2::RenderSystem::DrawTexture(*layer.tex, region, mt, false);
 
+        // border
         pt.AddRect(mt * sm::vec2(region.xmin, region.ymin), mt * sm::vec2(region.xmax, region.ymax), 0xff0000ff);
+
+        // viewport
+        const float scale = static_cast<float>(std::pow(2, i));
+        float xmin = layer.region.xmin / scale / TEX_SIZE * region.Width() + region.xmin;
+        float xmax = layer.region.xmax / scale / TEX_SIZE * region.Width() + region.xmin;
+        float ymin = layer.region.ymin / scale / TEX_SIZE * region.Height() + region.ymin;
+        float ymax = layer.region.ymax / scale / TEX_SIZE * region.Height() + region.ymin;
+        pt.AddRect(mt * sm::vec2(xmin, ymin), mt * sm::vec2(xmax, ymax), 0xff0000ff);
     }
 
     pt2::RenderSystem::DrawPainter(pt);
 }
 
-void TextureStack::TraverseDiffPages(const sm::rect& old_r, const sm::rect& new_r,
+void TextureStack::TraverseDiffPages(const sm::rect& new_r, size_t start_layer,
                                      std::function<void(const textile::Page& page, const sm::rect& region)> cb)
 {
-    if (sm::is_rect_contain_rect(old_r, new_r)) {
-        return;
-    }
+    for (size_t i = start_layer, n = m_layers.size(); i < n; ++i)
+    {
+        auto& old_r = m_layers[i].region;
+        if (sm::is_rect_contain_rect(old_r, new_r)) {
+            continue;
+        }
 
-    if (!old_r.IsValid() || !sm::is_rect_intersect_rect(old_r, new_r)) {
-        return TraversePages(new_r, cb);
-    }
+        if (!old_r.IsValid() || !sm::is_rect_intersect_rect(old_r, new_r)) {
+            TraversePages(new_r, i, cb);
+            continue;
+        }
 
-    if (sm::is_rect_contain_rect(new_r, old_r))
-    {
-        TraversePages(sm::rect(new_r.xmin, new_r.ymin, new_r.xmax, old_r.ymin), cb);
-        TraversePages(sm::rect(new_r.xmin, old_r.ymax, new_r.xmax, new_r.ymax), cb);
-        TraversePages(sm::rect(new_r.xmin, old_r.ymin, old_r.xmin, old_r.ymax), cb);
-        TraversePages(sm::rect(old_r.xmax, old_r.ymin, new_r.xmax, old_r.ymax), cb);
-    }
-    else if (new_r.xmin <= old_r.xmin && new_r.ymin <= old_r.ymin)
-    {
-        TraversePages(sm::rect(new_r.xmin, new_r.ymin, old_r.xmin, new_r.ymax), cb);
-        TraversePages(sm::rect(old_r.xmin, new_r.ymin, new_r.xmax, old_r.ymin), cb);
-    }
-    else if (new_r.xmin <= old_r.xmin && new_r.ymax >= old_r.ymax)
-    {
-        TraversePages(sm::rect(new_r.xmin, new_r.ymin, old_r.xmin, new_r.ymax), cb);
-        TraversePages(sm::rect(old_r.xmin, old_r.ymax, new_r.xmax, new_r.ymax), cb);
-    }
-    else if (new_r.xmax >= old_r.xmax && new_r.ymax >= old_r.ymax)
-    {
-        TraversePages(sm::rect(new_r.xmin, old_r.ymax, new_r.xmax, new_r.ymax), cb);
-        TraversePages(sm::rect(old_r.xmax, new_r.ymin, new_r.xmax, old_r.ymax), cb);
-    }
-    else if (new_r.xmax >= old_r.xmax && new_r.ymin <= old_r.ymin)
-    {
-        TraversePages(sm::rect(new_r.xmin, new_r.ymin, new_r.xmax, old_r.ymin), cb);
-        TraversePages(sm::rect(old_r.xmax, old_r.ymin, new_r.xmax, new_r.ymax), cb);
-    }
-    else
-    {
-        assert(0);
+        if (sm::is_rect_contain_rect(new_r, old_r))
+        {
+            TraversePages(sm::rect(new_r.xmin, new_r.ymin, new_r.xmax, old_r.ymin), i, cb);
+            TraversePages(sm::rect(new_r.xmin, old_r.ymax, new_r.xmax, new_r.ymax), i, cb);
+            TraversePages(sm::rect(new_r.xmin, old_r.ymin, old_r.xmin, old_r.ymax), i, cb);
+            TraversePages(sm::rect(old_r.xmax, old_r.ymin, new_r.xmax, old_r.ymax), i, cb);
+        }
+        else if (new_r.xmin <= old_r.xmin && new_r.ymin <= old_r.ymin)
+        {
+            TraversePages(sm::rect(new_r.xmin, new_r.ymin, old_r.xmin, new_r.ymax), i, cb);
+            TraversePages(sm::rect(old_r.xmin, new_r.ymin, new_r.xmax, old_r.ymin), i, cb);
+        }
+        else if (new_r.xmin <= old_r.xmin && new_r.ymax >= old_r.ymax)
+        {
+            TraversePages(sm::rect(new_r.xmin, new_r.ymin, old_r.xmin, new_r.ymax), i, cb);
+            TraversePages(sm::rect(old_r.xmin, old_r.ymax, new_r.xmax, new_r.ymax), i, cb);
+        }
+        else if (new_r.xmax >= old_r.xmax && new_r.ymax >= old_r.ymax)
+        {
+            TraversePages(sm::rect(new_r.xmin, old_r.ymax, new_r.xmax, new_r.ymax), i, cb);
+            TraversePages(sm::rect(old_r.xmax, new_r.ymin, new_r.xmax, old_r.ymax), i, cb);
+        }
+        else if (new_r.xmax >= old_r.xmax && new_r.ymin <= old_r.ymin)
+        {
+            TraversePages(sm::rect(new_r.xmin, new_r.ymin, new_r.xmax, old_r.ymin), i, cb);
+            TraversePages(sm::rect(old_r.xmax, old_r.ymin, new_r.xmax, new_r.ymax), i, cb);
+        }
+        else
+        {
+            assert(0);
+        }
     }
 }
 
-void TextureStack::TraversePages(const sm::rect& region,
+void TextureStack::TraversePages(const sm::rect& region, size_t layer,
                                  std::function<void(const textile::Page& page, const sm::rect& region)> cb)
 {
     if (!region.IsValid() || region.Width() == 0 || region.Height() == 0) {
         return;
     }
 
-    float layer_w = static_cast<float>(m_vtex_info.vtex_width);
-    float layer_h = static_cast<float>(m_vtex_info.vtex_height);
-    float tile_sz = static_cast<float>(m_vtex_info.tile_size);
-    for (size_t i = 0, n = m_layers.size(); i < n; ++i)
+    const float scale = static_cast<float>(std::pow(2, layer));
+    const float layer_w = m_vtex_info.vtex_width * scale;
+    const float layer_h = m_vtex_info.vtex_height * scale;
+    const float tile_sz = m_vtex_info.tile_size * scale;
+
+    sm::rect r = region;
+
+    int x_begin = static_cast<int>(std::floor(r.xmin / tile_sz));
+    int x_end   = static_cast<int>(std::floor(r.xmax / tile_sz));
+    int y_begin = static_cast<int>(std::floor(r.ymin / tile_sz));
+    int y_end   = static_cast<int>(std::floor(r.ymax / tile_sz));
+
+    for (int x = x_begin; x <= x_end; ++x)
     {
-        //sm::rect r;
-        //r.xmin = std::max(0.0f,    region.xmin);
-        //r.xmax = std::min(layer_w, region.xmax);
-        //r.ymin = std::max(0.0f,    region.ymin);
-        //r.ymax = std::min(layer_h, region.ymax);
-        //if (r.xmax <= r.xmin || r.ymax <= r.ymin) {
-        //    continue;
-        //}
-
-        sm::rect r = region;
-
-        int x_begin = static_cast<int>(std::floor(r.xmin / tile_sz));
-        int x_end   = static_cast<int>(std::floor(r.xmax / tile_sz));
-        int y_begin = static_cast<int>(std::floor(r.ymin / tile_sz));
-        int y_end   = static_cast<int>(std::floor(r.ymax / tile_sz));
-
-        for (int x = x_begin; x <= x_end; ++x)
+        for (int y = y_begin; y <= y_end; ++y)
         {
-            for (int y = y_begin; y <= y_end; ++y)
-            {
-                sm::rect r;
-                r.xmin = std::max(region.xmin, x * tile_sz);
-                r.xmax = std::min(region.xmax, x * tile_sz + tile_sz);
-                r.ymin = std::max(region.ymin, y * tile_sz);
-                r.ymax = std::min(region.ymax, y * tile_sz + tile_sz);
-                cb(textile::Page(x, y, i), r);
-            }
+            sm::rect r;
+            r.xmin = std::max(region.xmin, x * tile_sz);
+            r.xmax = std::min(region.xmax, x * tile_sz + tile_sz);
+            r.ymin = std::max(region.ymin, y * tile_sz);
+            r.ymax = std::min(region.ymax, y * tile_sz + tile_sz);
+            cb(textile::Page(x, y, layer), r);
         }
-
-        layer_w *= 2;
-        layer_h *= 2;
-        tile_sz *= 2;
     }
+}
+
+size_t TextureStack::CalcMipmapLevel(float scale) const
+{
+    float level = log(scale) / log(2.0f);
+    level = std::min(static_cast<float>(m_layers.size() - 1), std::max(0.0f, level));
+    return static_cast<size_t>(std::ceil(level));
+
 }
 
 }
