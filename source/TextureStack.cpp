@@ -161,8 +161,8 @@ void TextureStack::Update(PageCache& cache, const sm::rect& viewport,
     }
 
     m_scale = std::min(std::min(m_vtex_info.vtex_width / viewport.Width(), m_vtex_info.vtex_height / viewport.Height()), scale);
-    m_offset.x = std::max(0.0f, std::min(offset.x, m_vtex_info.vtex_width - viewport.Width() * m_scale));
-    m_offset.y = std::max(0.0f, std::min(offset.y, m_vtex_info.vtex_height - viewport.Height() * m_scale));
+    m_offset.x = std::max(0.0f, std::min(offset.x, m_vtex_info.vtex_width  / scale - viewport.Width()));
+    m_offset.y = std::max(0.0f, std::min(offset.y, m_vtex_info.vtex_height / scale - viewport.Height()));
 
     sm::rect region = viewport;
     region.Translate(m_offset);
