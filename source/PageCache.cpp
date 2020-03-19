@@ -23,7 +23,7 @@ PageCache::PageCache(textile::PageLoader& loader, const textile::PageIndexer& in
     , m_tex_stack(tex_stack)
 {
     auto& info = loader.GetVTexInfo();
-    m_page_buf = new uint8_t[info.tile_size * info.tile_size * 4];
+    m_page_buf = new uint8_t[info.tile_size * info.tile_size * info.channels];
 }
 
 PageCache::~PageCache()
@@ -43,9 +43,9 @@ void PageCache::LoadComplete(const textile::Page& page, const uint8_t* data)
 
     m_lru.AddFront(page, 0, 0);
 
-    m_map_page2tex.insert({ 
-        m_indexer.CalcPageIdx(page), 
-        CreatePageTex(data) 
+    m_map_page2tex.insert({
+        m_indexer.CalcPageIdx(page),
+        CreatePageTex(data)
     });
 }
 
@@ -58,15 +58,16 @@ ur::TexturePtr PageCache::QueryPageTex(const textile::Page& page) const
 ur::TexturePtr PageCache::CreatePageTex(const uint8_t* data) const
 {
     auto& info = m_loader.GetVTexInfo();
+    assert(info.bytes == 1);
     auto dst = m_page_buf;
-    memset(dst, 0xff, info.tile_size * info.tile_size * 4);
+    memset(dst, 0xff, info.tile_size * info.tile_size * info.channels);
     const uint8_t* src = data;
     for (size_t y = 0; y < info.tile_size; ++y) {
         for (size_t x = 0; x < info.tile_size; ++x) {
-            memset(&dst[(y * info.tile_size + x) * 4], 0xff, 4);
+            memset(&dst[(y * info.tile_size + x) * info.channels], 0xff, info.channels);
             for (size_t c = 0; c < info.channels; ++c) {
-                auto s_idx = ((y * info.tile_size + x) * info.channels + c) * info.bytes;
-                auto d_idx = (y * info.tile_size + x) * 4 + c;
+                auto s_idx = (y * info.tile_size + x) * info.channels + c;
+                auto d_idx = (y * info.tile_size + x) * info.channels + c;
                 dst[d_idx] = src[s_idx];
             }
         }
@@ -74,7 +75,22 @@ ur::TexturePtr PageCache::CreatePageTex(const uint8_t* data) const
 
     auto tex = std::make_shared<ur::Texture>();
     auto& rc = ur::Blackboard::Instance()->GetRenderContext();
-    tex->Upload(&rc, info.tile_size, info.tile_size, ur::TEXTURE_RGBA8, m_page_buf);
+    ur::TEXTURE_FORMAT fmt;
+    switch (info.channels)
+    {
+    case 1:
+        fmt = ur::TEXTURE_RED;
+        break;
+    case 3:
+        fmt = ur::TEXTURE_RGB;
+        break;
+    case 4:
+        fmt = ur::TEXTURE_RGBA8;
+        break;
+    default:
+        assert(0);
+    }
+    tex->Upload(&rc, info.tile_size, info.tile_size, fmt, m_page_buf);
     return tex;
 }
 
