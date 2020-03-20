@@ -386,21 +386,53 @@ void TextureStack::TraverseDiffPages(const sm::rect& new_r, size_t start_layer,
         {
             TraversePages(sm::rect(new_r.xmin, new_r.ymin, old_r.xmin, new_r.ymax), i, cb);
             TraversePages(sm::rect(old_r.xmin, new_r.ymin, new_r.xmax, old_r.ymin), i, cb);
+            if (new_r.ymax > old_r.ymax) {
+                TraversePages(sm::rect(old_r.xmin, old_r.xmax, new_r.xmax, new_r.ymax), i, cb);
+            }
         }
         else if (new_r.xmin <= old_r.xmin && new_r.ymax >= old_r.ymax)
         {
             TraversePages(sm::rect(new_r.xmin, new_r.ymin, old_r.xmin, new_r.ymax), i, cb);
             TraversePages(sm::rect(old_r.xmin, old_r.ymax, new_r.xmax, new_r.ymax), i, cb);
+            if (new_r.xmax > old_r.xmax) {
+                TraversePages(sm::rect(old_r.xmax, new_r.ymin, new_r.xmax, new_r.ymax), i, cb);
+            }
         }
         else if (new_r.xmax >= old_r.xmax && new_r.ymax >= old_r.ymax)
         {
             TraversePages(sm::rect(new_r.xmin, old_r.ymax, new_r.xmax, new_r.ymax), i, cb);
             TraversePages(sm::rect(old_r.xmax, new_r.ymin, new_r.xmax, old_r.ymax), i, cb);
+            if (new_r.ymin < old_r.ymin) {
+                TraversePages(sm::rect(new_r.xmin, new_r.ymin, old_r.xmax, old_r.ymin), i, cb);
+            }
         }
         else if (new_r.xmax >= old_r.xmax && new_r.ymin <= old_r.ymin)
         {
             TraversePages(sm::rect(new_r.xmin, new_r.ymin, new_r.xmax, old_r.ymin), i, cb);
             TraversePages(sm::rect(old_r.xmax, old_r.ymin, new_r.xmax, new_r.ymax), i, cb);
+            if (new_r.xmin < old_r.xmin) {
+                TraversePages(sm::rect(new_r.xmin, old_r.ymin, old_r.xmin, new_r.ymax), i, cb);
+            }
+        }
+        else if (new_r.xmin < old_r.xmin && new_r.xmax <= old_r.xmax
+              && new_r.ymin >= old_r.ymin && new_r.ymax <= old_r.ymax)
+        {
+            TraversePages(sm::rect(new_r.xmin, new_r.ymin, old_r.xmin, new_r.ymax), i, cb);
+        }
+        else if (new_r.xmax > old_r.xmax && new_r.xmin >= old_r.xmin
+              && new_r.ymin >= old_r.ymin && new_r.ymax <= old_r.ymax)
+        {
+            TraversePages(sm::rect(old_r.xmax, new_r.ymin, new_r.xmax, new_r.ymax), i, cb);
+        }
+        else if (new_r.ymin < old_r.ymin && new_r.ymax <= old_r.ymax
+              && new_r.xmin >= old_r.xmin && new_r.xmax <= old_r.xmax)
+        {
+            TraversePages(sm::rect(new_r.xmin, new_r.ymin, new_r.xmax, old_r.ymin), i, cb);
+        }
+        else if (new_r.ymax > old_r.ymax && new_r.ymin >= old_r.ymin
+              && new_r.xmin >= old_r.xmin && new_r.xmax <= old_r.xmax)
+        {
+            TraversePages(sm::rect(new_r.xmin, old_r.ymax, new_r.xmax, new_r.ymax), i, cb);
         }
         else
         {
