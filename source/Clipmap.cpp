@@ -12,8 +12,7 @@ Clipmap::Clipmap(const std::string& filepath, const textile::VTexInfo& info)
 {
 }
 
-void Clipmap::Draw(float scale, const sm::vec2& offset,
-                   float screen_width, float screen_height)
+void Clipmap::Update(float scale, const sm::vec2& offset)
 {
     if (scale != m_scale || offset != m_offset)
     {
@@ -21,8 +20,16 @@ void Clipmap::Draw(float scale, const sm::vec2& offset,
         m_offset = offset;
         m_stack.Update(m_cache, m_viewport, scale, offset);
     }
+}
 
+void Clipmap::Draw(float screen_width, float screen_height) const
+{
     m_stack.Draw(screen_width, screen_height);
+}
+
+void Clipmap::DebugDraw() const
+{
+    m_stack.DebugDraw();
 }
 
 }

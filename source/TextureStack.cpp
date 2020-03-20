@@ -127,7 +127,7 @@ TextureStack::~TextureStack()
 }
 
 void TextureStack::Update(PageCache& cache, const sm::rect& viewport,
-    float scale, const sm::vec2& offset)
+                          float scale, const sm::vec2& offset)
 {
     auto& rc = ur::Blackboard::Instance()->GetRenderContext();
 
@@ -203,6 +203,28 @@ void TextureStack::Draw(float screen_width, float screen_height) const
 
     rc.SetZTest(ur::DEPTH_LESS_EQUAL);
     rc.SetCullMode(ur::CULL_BACK);
+}
+
+void TextureStack::DebugDraw() const
+{
+    assert(!m_layers.empty());
+    if (!m_layers[0].tex) {
+        return;
+    }
+
+    auto& rc = ur::Blackboard::Instance()->GetRenderContext();
+    rc.SetZTest(ur::DEPTH_DISABLE);
+    rc.SetCullMode(ur::CULL_DISABLE);
+
+    DrawDebug();
+
+    rc.SetZTest(ur::DEPTH_LESS_EQUAL);
+    rc.SetCullMode(ur::CULL_BACK);
+}
+
+size_t TextureStack::GetTextureSize() const
+{
+    return TEX_SIZE;
 }
 
 void TextureStack::AddPage(const textile::Page& page, const ur::TexturePtr& tex,

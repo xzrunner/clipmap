@@ -3,6 +3,7 @@
 #include "clipmap/PageCache.h"
 #include "clipmap/TextureStack.h"
 
+#include <unirender/Texture.h>
 #include <textile/PageIndexer.h>
 #include <textile/PageLoader.h>
 #include <textile/VTexInfo.h>
@@ -19,8 +20,12 @@ class Clipmap : private boost::noncopyable
 public:
     Clipmap(const std::string& filepath, const textile::VTexInfo& info);
 
-    void Draw(float scale, const sm::vec2& offset,
-        float screen_width, float screen_height);
+    void Update(float scale, const sm::vec2& offset);
+    void Draw(float screen_width, float screen_height) const;
+    void DebugDraw() const;
+
+    auto& GetAllLayers() const { return m_stack.GetAllLayers(); }
+    size_t GetStackTexSize() const { return m_stack.GetTextureSize(); }
 
 private:
     textile::VTexInfo m_info;
