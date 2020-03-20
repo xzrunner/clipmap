@@ -346,7 +346,7 @@ void TextureStack::DrawDebug() const
         pt2::RenderSystem::DrawTexture(*layer.tex, region, mt, false);
 
         // border
-        pt.AddRect(mt * sm::vec2(region.xmin, region.ymin), mt * sm::vec2(region.xmax, region.ymax), 0xff0000ff);
+        pt.AddRect(mt * sm::vec2(region.xmin, region.ymin), mt * sm::vec2(region.xmax, region.ymax), 0xff00ff00);
 
         // viewport
         const float scale = static_cast<float>(std::pow(2, i));
@@ -354,7 +354,7 @@ void TextureStack::DrawDebug() const
         float xmax = layer.region.xmax / scale / TEX_SIZE * region.Width() + region.xmin;
         float ymin = layer.region.ymin / scale / TEX_SIZE * region.Height() + region.ymin;
         float ymax = layer.region.ymax / scale / TEX_SIZE * region.Height() + region.ymin;
-        pt.AddRect(mt * sm::vec2(xmin, ymin), mt * sm::vec2(xmax, ymax), 0xff0000ff);
+        pt.AddRect(mt * sm::vec2(xmin, ymin), mt * sm::vec2(xmax, ymax), 0xff00ff00);
     }
 
     pt2::RenderSystem::DrawPainter(pt);
