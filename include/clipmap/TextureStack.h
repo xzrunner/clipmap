@@ -41,6 +41,11 @@ public:
 
     size_t GetTextureSize() const;
 
+    void GetRegion(float& scale, sm::vec2& offset) const {
+        scale = m_scale;
+        offset = m_offset;
+    }
+
 private:
     void AddPage(const textile::Page& page, const ur::TexturePtr& tex,
         const sm::rect& region);
@@ -64,7 +69,7 @@ private:
     std::shared_ptr<ur::Shader> m_update_shader = nullptr;
     mutable std::shared_ptr<ur::Shader> m_final_shader = nullptr;
 
-    float    m_scale = 1.0f;
+    float    m_scale = 0;
     sm::vec2 m_offset;
 
 }; // TextureStack

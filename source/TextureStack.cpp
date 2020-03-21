@@ -82,7 +82,7 @@ void main()
     vec2 uv = position.xy;
     vec2 pos = uv * 2 - 1;
 
-	vs_out.texcoord = (uv + u_offset) * u_scale;
+	vs_out.texcoord = uv * u_scale + u_offset;
 	gl_Position = u_view_mat * vec4(pos, 0, 1);
 }
 
@@ -129,6 +129,10 @@ TextureStack::~TextureStack()
 void TextureStack::Update(PageCache& cache, const sm::rect& viewport,
                           float scale, const sm::vec2& offset)
 {
+    if (m_scale == scale && m_offset == offset) {
+        return;
+    }
+
     auto& rc = ur::Blackboard::Instance()->GetRenderContext();
 
     // init textures
@@ -161,12 +165,12 @@ void TextureStack::Update(PageCache& cache, const sm::rect& viewport,
     }
 
     m_scale = std::min(std::min(m_vtex_info.vtex_width / viewport.Width(), m_vtex_info.vtex_height / viewport.Height()), scale);
-    m_offset.x = std::max(0.0f, std::min(offset.x, m_vtex_info.vtex_width  / scale - viewport.Width()));
-    m_offset.y = std::max(0.0f, std::min(offset.y, m_vtex_info.vtex_height / scale - viewport.Height()));
+    m_offset.x = std::max(0.0f, std::min(offset.x, m_vtex_info.vtex_width - viewport.Width() * scale));
+    m_offset.y = std::max(0.0f, std::min(offset.y, m_vtex_info.vtex_height - viewport.Height() * scale));
 
     sm::rect region = viewport;
-    region.Translate(m_offset);
     region.Scale(sm::vec2(m_scale, m_scale));
+    region.Translate(m_offset);
 
     const int mipmap_level = CalcMipmapLevel(m_scale);
 
@@ -312,8 +316,10 @@ void TextureStack::DrawTexture(float screen_width, float screen_height) const
     sm::mat4 view_mat = sm::mat4::Scaled(TEX_SIZE / screen_width, TEX_SIZE / screen_height, 1);
     m_final_shader->SetMat4("u_view_mat", view_mat.x);
 
-    m_final_shader->SetFloat("u_scale", m_scale / static_cast<float>(std::pow(2, finer_layer)));
-    m_final_shader->SetVec2("u_offset", (m_offset / TEX_SIZE).xy);
+    auto scale = m_scale / static_cast<float>(std::pow(2, finer_layer));
+    m_final_shader->SetFloat("u_scale", scale);
+    auto offset = m_offset / TEX_SIZE / static_cast<float>(std::pow(2, finer_layer));
+    m_final_shader->SetVec2("u_offset", offset.xy);
 
     rc.RenderQuad(ur::RenderContext::VertLayout::VL_POS, true);
 
@@ -349,12 +355,24 @@ void TextureStack::DrawDebug() const
         pt.AddRect(mt * sm::vec2(region.xmin, region.ymin), mt * sm::vec2(region.xmax, region.ymax), 0xff00ff00);
 
         // viewport
-        const float scale = static_cast<float>(std::pow(2, i));
-        float xmin = layer.region.xmin / scale / TEX_SIZE * region.Width() + region.xmin;
-        float xmax = layer.region.xmax / scale / TEX_SIZE * region.Width() + region.xmin;
-        float ymin = layer.region.ymin / scale / TEX_SIZE * region.Height() + region.ymin;
-        float ymax = layer.region.ymax / scale / TEX_SIZE * region.Height() + region.ymin;
-        pt.AddRect(mt * sm::vec2(xmin, ymin), mt * sm::vec2(xmax, ymax), 0xff00ff00);
+        const auto scale = static_cast<float>(1.0 / std::pow(2, i) / TEX_SIZE);
+        auto r = layer.region;
+        r.Scale(sm::vec2(scale, scale));
+        if (r.xmax > 1.0f) {
+            r.Translate(sm::vec2(1 - r.xmax, 0));
+        }
+        if (r.xmax < 0) {
+            r.Translate(sm::vec2(-r.xmin, 0));
+        }
+        if (r.ymax > 1.0f) {
+            r.Translate(sm::vec2(0, 1 - r.ymax));
+        }
+        if (r.ymax < 0) {
+            r.Translate(sm::vec2(0, -r.ymin));
+        }
+        auto r_min = sm::vec2(r.xmin, r.ymin) * sm::vec2(region.Width(), region.Height()) + sm::vec2(region.xmin, region.ymin);
+        auto r_max = sm::vec2(r.xmax, r.ymax) * sm::vec2(region.Width(), region.Height()) + sm::vec2(region.xmin, region.ymin);
+        pt.AddRect(mt * r_min, mt * r_max, 0xff00ff00);
     }
 
     pt2::RenderSystem::DrawPainter(pt);
