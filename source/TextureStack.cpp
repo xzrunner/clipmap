@@ -126,32 +126,27 @@ TextureStack::~TextureStack()
     }
 }
 
-void TextureStack::Update(PageCache& cache, const sm::rect& viewport,
-                          float scale, const sm::vec2& offset)
+void TextureStack::Init()
 {
-    if (m_scale == scale && m_offset == offset) {
+    if (m_layers[0].tex) {
         return;
     }
 
     auto& rc = ur::Blackboard::Instance()->GetRenderContext();
 
     // init textures
-    assert(!m_layers.empty());
-    if (!m_layers[0].tex)
+    uint8_t* filling = new uint8_t[TEX_SIZE * TEX_SIZE * 4];
+    memset(filling, 0xaa, TEX_SIZE * TEX_SIZE * 4);
+
+    auto w = m_vtex_info.vtex_width;
+    auto h = m_vtex_info.vtex_height;
+    for (auto& layer : m_layers)
     {
-        uint8_t* filling = new uint8_t[TEX_SIZE * TEX_SIZE * 4];
-        memset(filling, 0xaa, TEX_SIZE * TEX_SIZE * 4);
-
-        auto w = m_vtex_info.vtex_width;
-        auto h = m_vtex_info.vtex_height;
-        for (auto& layer : m_layers)
-        {
-            layer.tex = std::make_unique<ur::Texture>();
-            layer.tex->Upload(&rc, TEX_SIZE, TEX_SIZE, ur::TEXTURE_RGBA8, filling);
-        }
-
-        delete[] filling;
+        layer.tex = std::make_unique<ur::Texture>();
+        layer.tex->Upload(&rc, TEX_SIZE, TEX_SIZE, ur::TEXTURE_RGBA8, filling);
     }
+
+    delete[] filling;
 
     // init shader
     if (!m_update_shader)
@@ -163,6 +158,19 @@ void TextureStack::Update(PageCache& cache, const sm::rect& viewport,
 
         m_update_shader = std::make_shared<ur::Shader>(&rc, update_vs, update_fs, textures, layout);
     }
+}
+
+void TextureStack::Update(PageCache& cache, const sm::rect& viewport,
+                          float scale, const sm::vec2& offset)
+{
+    // need init before
+    if (!m_layers[0].tex || !m_update_shader) {
+        return;
+    }
+
+    if (m_scale == scale && m_offset == offset) {
+        return;
+    }
 
     m_scale = std::min(std::min(m_vtex_info.vtex_width / viewport.Width(), m_vtex_info.vtex_height / viewport.Height()), scale);
     m_offset.x = std::max(0.0f, std::min(offset.x, m_vtex_info.vtex_width - viewport.Width() * scale));
@@ -172,7 +180,7 @@ void TextureStack::Update(PageCache& cache, const sm::rect& viewport,
     region.Scale(sm::vec2(m_scale, m_scale));
     region.Translate(m_offset);
 
-    const int mipmap_level = CalcMipmapLevel(m_scale);
+    const int mipmap_level = CalcMipmapLevel(m_layers.size(), m_scale);
 
     // load pages
     TraverseDiffPages(region, mipmap_level, [&cache](const textile::Page& page, const sm::rect& r) {
@@ -229,6 +237,21 @@ void TextureStack::DebugDraw() const
 size_t TextureStack::GetTextureSize() const
 {
     return TEX_SIZE;
+}
+
+sm::rect TextureStack::CalcUVRegion(int level, const Layer& layer)
+{
+    const auto scale = static_cast<float>(1.0 / std::pow(2, level) / TEX_SIZE);
+    auto r = layer.region;
+    r.Scale(sm::vec2(scale, scale));
+    return r;
+}
+
+size_t TextureStack::CalcMipmapLevel(int level_num, float scale)
+{
+    float level = log(scale) / log(2.0f);
+    level = std::min(static_cast<float>(level_num - 1), std::max(0.0f, level));
+    return static_cast<size_t>(std::ceil(level));
 }
 
 void TextureStack::AddPage(const textile::Page& page, const ur::TexturePtr& tex,
@@ -305,7 +328,7 @@ void TextureStack::DrawTexture(float screen_width, float screen_height) const
         m_final_shader = std::make_shared<ur::Shader>(&rc, final_vs, final_fs, textures, layout);
     }
 
-    const uint32_t finer_layer = CalcMipmapLevel(m_scale);
+    const uint32_t finer_layer = CalcMipmapLevel(m_layers.size(), m_scale);
     const uint32_t coarser_layer = finer_layer < m_layers.size() - 1 ? finer_layer + 1 : finer_layer;
     m_final_shader->SetUsedTextures({
         m_layers[finer_layer].tex->TexID(),
@@ -331,33 +354,28 @@ void TextureStack::DrawDebug() const
     tess::Painter pt;
 
     // region
-    sm::Matrix2D mt;
-    mt.Scale(m_scale, m_scale);
-    mt.Translate(m_offset.x, m_offset.y);
-
     const float h_sz = TEX_SIZE * 0.5f;
-    pt.AddRect(mt * sm::vec2(-h_sz, -h_sz), mt * sm::vec2(h_sz, h_sz), 0xff0000ff);
+    pt.AddRect(sm::vec2(-h_sz, -h_sz), sm::vec2(h_sz, h_sz), 0xff0000ff);
 
     // layers
     const float sx = -400;
     const float sy = -350;
-    const float size  = 170;
+    const float size  = 100;
     const float space = 4;
+    auto start = CalcMipmapLevel(m_layers.size(), m_scale);
     for (size_t i = 0, n = m_layers.size(); i < n; ++i)
     {
         auto& layer = m_layers[i];
 
         const float x = sx + (size + space) * i;
         sm::rect region(x, sy, x + size, sy + size);
-        pt2::RenderSystem::DrawTexture(*layer.tex, region, mt, false);
+        pt2::RenderSystem::DrawTexture(*layer.tex, region, sm::Matrix2D(), false);
 
         // border
-        pt.AddRect(mt * sm::vec2(region.xmin, region.ymin), mt * sm::vec2(region.xmax, region.ymax), 0xff00ff00);
+        pt.AddRect(sm::vec2(region.xmin, region.ymin), sm::vec2(region.xmax, region.ymax), 0xff00ff00);
 
         // viewport
-        const auto scale = static_cast<float>(1.0 / std::pow(2, i) / TEX_SIZE);
-        auto r = layer.region;
-        r.Scale(sm::vec2(scale, scale));
+        auto r = CalcUVRegion(i, layer);
         if (r.xmax > 1.0f) {
             r.Translate(sm::vec2(1 - r.xmax, 0));
         }
@@ -372,7 +390,8 @@ void TextureStack::DrawDebug() const
         }
         auto r_min = sm::vec2(r.xmin, r.ymin) * sm::vec2(region.Width(), region.Height()) + sm::vec2(region.xmin, region.ymin);
         auto r_max = sm::vec2(r.xmax, r.ymax) * sm::vec2(region.Width(), region.Height()) + sm::vec2(region.xmin, region.ymin);
-        pt.AddRect(mt * r_min, mt * r_max, 0xff00ff00);
+        const auto color = i >= start ? 0xff0000ff : 0xff00ff00;
+        pt.AddRect(r_min, r_max, color);
     }
 
     pt2::RenderSystem::DrawPainter(pt);
@@ -490,14 +509,6 @@ void TextureStack::TraversePages(const sm::rect& region, size_t layer,
             cb(textile::Page(x, y, layer), r);
         }
     }
-}
-
-size_t TextureStack::CalcMipmapLevel(float scale) const
-{
-    float level = log(scale) / log(2.0f);
-    level = std::min(static_cast<float>(m_layers.size() - 1), std::max(0.0f, level));
-    return static_cast<size_t>(std::ceil(level));
-
 }
 
 }

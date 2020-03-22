@@ -20,6 +20,8 @@ class Clipmap : private boost::noncopyable
 public:
     Clipmap(const std::string& filepath, const textile::VTexInfo& info);
 
+    void Init();
+
     void Update(float scale, const sm::vec2& offset);
     void GetRegion(float& scale, sm::vec2& offset) const;
 

@@ -12,6 +12,11 @@ Clipmap::Clipmap(const std::string& filepath, const textile::VTexInfo& info)
 {
 }
 
+void Clipmap::Init()
+{
+    m_stack.Init();
+}
+
 void Clipmap::Update(float scale, const sm::vec2& offset)
 {
     m_stack.Update(m_cache, m_viewport, scale, offset);

@@ -17,7 +17,7 @@ class PageCache;
 
 class TextureStack
 {
-private:
+public:
     struct Layer
     {
         Layer() {
@@ -31,6 +31,8 @@ private:
 public:
     TextureStack(const textile::VTexInfo& vtex_info);
     ~TextureStack();
+
+    void Init();
 
     void Update(PageCache& cache, const sm::rect& viewport,
         float scale, const sm::vec2& offset);
@@ -46,6 +48,9 @@ public:
         offset = m_offset;
     }
 
+    static sm::rect CalcUVRegion(int level, const Layer& layer);
+    static size_t CalcMipmapLevel(int level_num, float scale);
+
 private:
     void AddPage(const textile::Page& page, const ur::TexturePtr& tex,
         const sm::rect& region);
@@ -57,8 +62,6 @@ private:
         std::function<void(const textile::Page& page, const sm::rect& region)> cb);
     void TraversePages(const sm::rect& region, size_t start_layer,
         std::function<void(const textile::Page& page, const sm::rect& region)> cb);
-
-    size_t CalcMipmapLevel(float scale) const;
 
 private:
     const textile::VTexInfo& m_vtex_info;
