@@ -1,10 +1,10 @@
 #include "clipmap/PageCache.h"
 #include "clipmap/TextureStack.h"
 
+#include <unirender2/Device.h>
+#include <unirender2/TextureDescription.h>
 #include <textile/PageIndexer.h>
 #include <textile/PageLoader.h>
-#include <unirender/Blackboard.h>
-#include <unirender/RenderContext.h>
 
 namespace
 {
@@ -31,7 +31,7 @@ PageCache::~PageCache()
     delete[] m_page_buf;
 }
 
-void PageCache::LoadComplete(const textile::Page& page, const uint8_t* data)
+void PageCache::LoadComplete(const ur2::Device& dev, const textile::Page& page, const uint8_t* data)
 {
     if (m_lru.Size() == CAPACITY)
     {
@@ -45,17 +45,17 @@ void PageCache::LoadComplete(const textile::Page& page, const uint8_t* data)
 
     m_map_page2tex.insert({
         m_indexer.CalcPageIdx(page),
-        CreatePageTex(data)
+        CreatePageTex(dev, data)
     });
 }
 
-ur::TexturePtr PageCache::QueryPageTex(const textile::Page& page) const
+ur2::TexturePtr PageCache::QueryPageTex(const textile::Page& page) const
 {
     auto itr = m_map_page2tex.find(m_indexer.CalcPageIdx(page));
     return itr == m_map_page2tex.end() ? nullptr : itr->second;
 }
 
-ur::TexturePtr PageCache::CreatePageTex(const uint8_t* data) const
+ur2::TexturePtr PageCache::CreatePageTex(const ur2::Device& dev, const uint8_t* data) const
 {
     auto& info = m_loader.GetVTexInfo();
     assert(info.bytes == 1);
@@ -73,25 +73,28 @@ ur::TexturePtr PageCache::CreatePageTex(const uint8_t* data) const
         }
     }
 
-    auto tex = std::make_shared<ur::Texture>();
-    auto& rc = ur::Blackboard::Instance()->GetRenderContext();
-    ur::TEXTURE_FORMAT fmt;
+    //auto tex = std::make_shared<ur::Texture>();
+
+    ur2::TextureDescription desc;
+    desc.target = ur2::TextureTarget::Texture2D;
+    desc.width = info.tile_size;
+    desc.height = info.tile_size;
     switch (info.channels)
     {
     case 1:
-        fmt = ur::TEXTURE_RED;
+        desc.format = ur2::TextureFormat::RED;
         break;
     case 3:
-        fmt = ur::TEXTURE_RGB;
+        desc.format = ur2::TextureFormat::RGB;
         break;
     case 4:
-        fmt = ur::TEXTURE_RGBA8;
+        desc.format = ur2::TextureFormat::RGBA8;
         break;
     default:
         assert(0);
     }
-    tex->Upload(&rc, info.tile_size, info.tile_size, fmt, m_page_buf);
-    return tex;
+
+    return dev.CreateTexture(desc, m_page_buf);
 }
 
 }

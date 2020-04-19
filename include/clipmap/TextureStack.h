@@ -2,12 +2,18 @@
 
 #include <SM_Vector.h>
 #include <SM_Rect.h>
-#include <unirender/Texture.h>
+#include <unirender2/typedef.h>
 
 #include <vector>
 #include <functional>
 
-namespace ur { class Shader; }
+namespace ur2 {
+    class Device;
+    class Context;
+    struct RenderState;
+    class ShaderProgram;
+    class Framebuffer;
+}
 namespace textile { struct Page; struct VTexInfo; }
 
 namespace clipmap
@@ -24,20 +30,21 @@ public:
             region.MakeEmpty();
         }
 
-        ur::TexturePtr tex = nullptr;
+        ur2::TexturePtr tex = nullptr;
         sm::rect region;
     };
 
 public:
     TextureStack(const textile::VTexInfo& vtex_info);
-    ~TextureStack();
 
-    void Init();
+    void Init(const ur2::Device& dev);
 
-    void Update(PageCache& cache, const sm::rect& viewport,
+    void Update(const ur2::Device& dev, ur2::Context& ctx,
+        PageCache& cache, const sm::rect& viewport,
         float scale, const sm::vec2& offset);
-    void Draw(float screen_width, float screen_height) const;
-    void DebugDraw() const;
+    void Draw(const ur2::Device& dev, ur2::Context& ctx,
+        float screen_width, float screen_height) const;
+    void DebugDraw(const ur2::Device& dev, ur2::Context& ctx) const;
 
     auto& GetAllLayers() const { return m_layers; }
 
@@ -52,13 +59,14 @@ public:
     static size_t CalcMipmapLevel(int level_num, float scale);
 
 private:
-    void AddPage(const textile::Page& page, const ur::TexturePtr& tex,
-        const sm::rect& region);
+    void AddPage(const ur2::Device& dev, ur2::Context& ctx, const textile::Page& page,
+        const ur2::TexturePtr& tex, const sm::rect& region);
 
-    void DrawTexture(float screen_width, float screen_height) const;
-    void DrawDebug() const;
+    void DrawTexture(const ur2::Device& dev, ur2::Context& ctx, const ur2::RenderState& rs,
+        float screen_width, float screen_height) const;
+    void DrawDebug(const ur2::Device& dev, ur2::Context& ctx, const ur2::RenderState& rs) const;
 
-    void TraverseDiffPages(const sm::rect& region, size_t start_layer,
+    void TraverseDiffPages(const std::vector<sm::rect>& regions, size_t start_layer,
         std::function<void(const textile::Page& page, const sm::rect& region)> cb);
     void TraversePages(const sm::rect& region, size_t start_layer,
         std::function<void(const textile::Page& page, const sm::rect& region)> cb);
@@ -68,9 +76,9 @@ private:
 
     std::vector<Layer> m_layers;
 
-    int m_fbo = 0;
-    std::shared_ptr<ur::Shader> m_update_shader = nullptr;
-    mutable std::shared_ptr<ur::Shader> m_final_shader = nullptr;
+    std::shared_ptr<ur2::Framebuffer> m_fbo = nullptr;
+    std::shared_ptr<ur2::ShaderProgram> m_update_shader = nullptr;
+    mutable std::shared_ptr<ur2::ShaderProgram> m_final_shader = nullptr;
 
     float    m_scale = 0;
     sm::vec2 m_offset;

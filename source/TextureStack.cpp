@@ -3,10 +3,14 @@
 
 #include <SM_Calc.h>
 #include <tessellation/Painter.h>
-#include <unirender/Blackboard.h>
-#include <unirender/RenderContext.h>
-#include <unirender/RenderTarget.h>
-#include <unirender/Shader.h>
+#include <unirender2/Device.h>
+#include <unirender2/TextureDescription.h>
+#include <unirender2/Framebuffer.h>
+#include <unirender2/ShaderProgram.h>
+#include <unirender2/RenderState.h>
+#include <unirender2/Context.h>
+#include <unirender2/Uniform.h>
+#include <unirender2/DrawState.h>
 #include <painting2/RenderSystem.h>
 #include <textile/VTexInfo.h>
 #include <textile/Page.h>
@@ -118,21 +122,11 @@ TextureStack::TextureStack(const textile::VTexInfo& info)
     m_layers.resize(mip_count);
 }
 
-TextureStack::~TextureStack()
-{
-    if (m_fbo != 0) {
-        auto& rc = ur::Blackboard::Instance()->GetRenderContext();
-        rc.ReleaseRenderTarget(m_fbo);
-    }
-}
-
-void TextureStack::Init()
+void TextureStack::Init(const ur2::Device& dev)
 {
     if (m_layers[0].tex) {
         return;
     }
-
-    auto& rc = ur::Blackboard::Instance()->GetRenderContext();
 
     // init textures
     uint8_t* filling = new uint8_t[TEX_SIZE * TEX_SIZE * 4];
@@ -142,8 +136,12 @@ void TextureStack::Init()
     auto h = m_vtex_info.vtex_height;
     for (auto& layer : m_layers)
     {
-        layer.tex = std::make_unique<ur::Texture>();
-        layer.tex->Upload(&rc, TEX_SIZE, TEX_SIZE, ur::TEXTURE_RGBA8, filling);
+        ur2::TextureDescription desc;
+        desc.target = ur2::TextureTarget::Texture2D;
+        desc.width = TEX_SIZE;
+        desc.height = TEX_SIZE;
+        desc.format = ur2::TextureFormat::RGBA8;
+        layer.tex = dev.CreateTexture(desc, filling);
     }
 
     delete[] filling;
@@ -151,16 +149,15 @@ void TextureStack::Init()
     // init shader
     if (!m_update_shader)
     {
-        std::vector<std::string> textures;
-        textures.push_back("page_map");
+        //std::vector<std::string> textures;
+        //textures.push_back("page_map");
 
-        std::vector<ur::VertexAttrib> layout;
-
-        m_update_shader = std::make_shared<ur::Shader>(&rc, update_vs, update_fs, textures, layout);
+        m_update_shader = dev.CreateShaderProgram(update_vs, update_fs);
     }
 }
 
-void TextureStack::Update(PageCache& cache, const sm::rect& viewport,
+void TextureStack::Update(const ur2::Device& dev, ur2::Context& ctx,
+                          PageCache& cache, const sm::rect& viewport,
                           float scale, const sm::vec2& offset)
 {
     // need init before
@@ -182,56 +179,65 @@ void TextureStack::Update(PageCache& cache, const sm::rect& viewport,
 
     const int mipmap_level = CalcMipmapLevel(m_layers.size(), m_scale);
 
+    std::vector<sm::rect> regions;
+    regions.reserve(m_layers.size() - mipmap_level);
+    auto next_r = region;
+    for (size_t i = mipmap_level, n = m_layers.size(); i < n; ++i)
+    {
+        regions.push_back(next_r);
+
+        auto c = next_r.Center();
+        auto sz = next_r.Size();
+        next_r.Scale(sm::vec2(2, 2));
+        next_r.Translate(next_r.Center() - c);
+    }
+
     // load pages
-    TraverseDiffPages(region, mipmap_level, [&cache](const textile::Page& page, const sm::rect& r) {
-        cache.Request(page);
+    TraverseDiffPages(regions, mipmap_level, [&](const textile::Page& page, const sm::rect& r) {
+        cache.Request(dev, page);
     });
 
     // update levels
-    TraverseDiffPages(region, mipmap_level, [&](const textile::Page& page, const sm::rect& r) {
+    TraverseDiffPages(regions, mipmap_level, [&](const textile::Page& page, const sm::rect& r) {
         auto tex = cache.QueryPageTex(page);
         assert(tex);
-        AddPage(page, tex, r);
+        AddPage(dev, ctx, page, tex, r);
     });
 
+    assert(regions.size() == m_layers.size() - mipmap_level);
     for (size_t i = mipmap_level, n = m_layers.size(); i < n; ++i) {
-        m_layers[i].region = region;
+        m_layers[i].region = regions[i - mipmap_level];
     }
 }
 
-void TextureStack::Draw(float screen_width, float screen_height) const
+void TextureStack::Draw(const ur2::Device& dev, ur2::Context& ctx,
+                        float screen_width, float screen_height) const
 {
     assert(!m_layers.empty());
     if (!m_layers[0].tex) {
         return;
     }
 
-    auto& rc = ur::Blackboard::Instance()->GetRenderContext();
-    rc.SetZTest(ur::DEPTH_DISABLE);
-    rc.SetCullMode(ur::CULL_DISABLE);
+    ur2::RenderState rs;
+    rs.depth_test.enabled = false;
+    rs.facet_culling.enabled = false;
 
-    DrawTexture(screen_width, screen_height);
-    DrawDebug();
-
-    rc.SetZTest(ur::DEPTH_LESS_EQUAL);
-    rc.SetCullMode(ur::CULL_BACK);
+    DrawTexture(dev, ctx, rs, screen_width, screen_height);
+    DrawDebug(dev, ctx, rs);
 }
 
-void TextureStack::DebugDraw() const
+void TextureStack::DebugDraw(const ur2::Device& dev, ur2::Context& ctx) const
 {
     assert(!m_layers.empty());
     if (!m_layers[0].tex) {
         return;
     }
 
-    auto& rc = ur::Blackboard::Instance()->GetRenderContext();
-    rc.SetZTest(ur::DEPTH_DISABLE);
-    rc.SetCullMode(ur::CULL_DISABLE);
+    ur2::RenderState rs;
+    rs.depth_test.enabled = false;
+    rs.facet_culling.enabled = false;
 
-    DrawDebug();
-
-    rc.SetZTest(ur::DEPTH_LESS_EQUAL);
-    rc.SetCullMode(ur::CULL_BACK);
+    DrawDebug(dev, ctx, rs);
 }
 
 size_t TextureStack::GetTextureSize() const
@@ -254,8 +260,8 @@ size_t TextureStack::CalcMipmapLevel(int level_num, float scale)
     return static_cast<size_t>(std::ceil(level));
 }
 
-void TextureStack::AddPage(const textile::Page& page, const ur::TexturePtr& tex,
-                           const sm::rect& region)
+void TextureStack::AddPage(const ur2::Device& dev, ur2::Context& ctx, const textile::Page& page,
+                           const ur2::TexturePtr& tex, const sm::rect& region)
 {
     if (!region.IsValid() || region.Width() == 0 || region.Height() == 0) {
         return;
@@ -265,25 +271,26 @@ void TextureStack::AddPage(const textile::Page& page, const ur::TexturePtr& tex,
     auto& layer = m_layers[page.mip];
     auto tile_sz = m_vtex_info.tile_size;
 
-    auto& rc = ur::Blackboard::Instance()->GetRenderContext();
-    if (m_fbo == 0) {
-        m_fbo = rc.CreateRenderTarget(0);
+    if (!m_fbo) {
+        dev.CreateFramebuffer();
     }
 
-    int vp_x, vp_y, vp_w, vp_h;
-    rc.GetViewport(vp_x, vp_y, vp_w, vp_h);
+    ctx.SetViewport(0, 0, TEX_SIZE, TEX_SIZE);
 
-    rc.BindRenderTarget(m_fbo);
-    rc.BindRenderTargetTex(layer.tex->TexID(), ur::ATTACHMENT_COLOR0);
-    rc.SetViewport(0, 0, TEX_SIZE, TEX_SIZE);
+    ctx.SetFramebuffer(m_fbo);
+    m_fbo->SetAttachment(ur2::AttachmentType::Color0, ur2::TextureTarget::Texture2D, layer.tex, nullptr);
 
-    rc.SetZTest(ur::DEPTH_DISABLE);
-    rc.SetCullMode(ur::CULL_DISABLE);
+    ur2::RenderState rs;
+    rs.depth_test.enabled = false;
+    rs.facet_culling.enabled = false;
 
-    m_update_shader->SetUsedTextures({ tex->TexID() });
-    m_update_shader->Use();
+    ctx.SetTexture(m_update_shader->QueryTexSlot("page_map"), tex);
 
-    m_update_shader->SetFloat("u_page_scale", static_cast<float>(m_vtex_info.tile_size) / TEX_SIZE);
+    auto u_page_scale = m_update_shader->QueryUniform("u_page_scale");
+    assert(u_page_scale);
+    float page_scale = static_cast<float>(m_vtex_info.tile_size) / TEX_SIZE;
+    u_page_scale->SetValue(&page_scale, 1);
+
     const int tile_n = TEX_SIZE / tile_sz;
     sm::vec2 offset(
         static_cast<float>(page.x % tile_n) * tile_sz / TEX_SIZE,
@@ -291,65 +298,71 @@ void TextureStack::AddPage(const textile::Page& page, const ur::TexturePtr& tex,
     );
     offset.x += tile_sz / TEX_SIZE;
     offset.y += tile_sz / TEX_SIZE;
-    m_update_shader->SetVec2("u_page_pos", offset.xy);
+    auto u_page_pos = m_update_shader->QueryUniform("u_page_pos");
+    assert(u_page_pos);
+    u_page_pos->SetValue(offset.xy, 2);
 
     const float layer_tile_sz = static_cast<float>(tile_sz * std::pow(2.0f, page.mip));
 
     const sm::vec2 update_size(region.Width(), region.Height());
-    m_update_shader->SetVec2("u_update_size", (update_size / layer_tile_sz).xy);
+    auto u_update_size = m_update_shader->QueryUniform("u_update_size");
+    assert(u_update_size);
+    auto tile_update_size = update_size / layer_tile_sz;
+    u_update_size->SetValue(tile_update_size.xy, 2);
 
     sm::vec2 update_offset;
     update_offset.x = region.xmin - static_cast<int>(region.xmin / layer_tile_sz) * layer_tile_sz;
     update_offset.y = region.ymin - static_cast<int>(region.ymin / layer_tile_sz) * layer_tile_sz;
-    m_update_shader->SetVec2("u_update_offset", (update_offset / layer_tile_sz).xy);
+    auto u_update_offset = m_update_shader->QueryUniform("u_update_offset");
+    assert(u_update_offset);
+    auto tile_update_offset = update_offset / layer_tile_sz;
+    u_update_offset->SetValue(tile_update_offset.xy, 2);
 
-    rc.RenderQuad(ur::RenderContext::VertLayout::VL_POS, true);
-
-    rc.BindShader(0);
-
-    rc.UnbindRenderTarget();
-    rc.SetViewport(vp_x, vp_y, vp_w, vp_h);
-
-    rc.SetZTest(ur::DEPTH_LESS_EQUAL);
-    rc.SetCullMode(ur::CULL_BACK);
+    ur2::DrawState ds;
+    ds.render_state = rs;
+    ds.program = m_update_shader;
+    ctx.DrawQuad(ur2::Context::VertexLayout::Pos, ds);
 }
 
-void TextureStack::DrawTexture(float screen_width, float screen_height) const
+void TextureStack::DrawTexture(const ur2::Device& dev, ur2::Context& ctx, const ur2::RenderState& rs,
+                               float screen_width, float screen_height) const
 {
-    auto& rc = ur::Blackboard::Instance()->GetRenderContext();
     if (!m_final_shader)
     {
-        std::vector<std::string> textures;
-        textures.push_back("finer_tex");
-        textures.push_back("coarser_tex");
+        //std::vector<std::string> textures;
+        //textures.push_back("finer_tex");
+        //textures.push_back("coarser_tex");
 
-        std::vector<ur::VertexAttrib> layout;
-
-        m_final_shader = std::make_shared<ur::Shader>(&rc, final_vs, final_fs, textures, layout);
+        m_final_shader = dev.CreateShaderProgram(final_vs, final_fs);
     }
 
     const uint32_t finer_layer = CalcMipmapLevel(m_layers.size(), m_scale);
     const uint32_t coarser_layer = finer_layer < m_layers.size() - 1 ? finer_layer + 1 : finer_layer;
-    m_final_shader->SetUsedTextures({
-        m_layers[finer_layer].tex->TexID(),
-        m_layers[coarser_layer].tex->TexID()
-    });
-    m_final_shader->Use();
+    ctx.SetTexture(m_final_shader->QueryTexSlot("finer_tex"), m_layers[finer_layer].tex);
+    ctx.SetTexture(m_final_shader->QueryTexSlot("coarser_tex"), m_layers[coarser_layer].tex);
 
     sm::mat4 view_mat = sm::mat4::Scaled(TEX_SIZE / screen_width, TEX_SIZE / screen_height, 1);
-    m_final_shader->SetMat4("u_view_mat", view_mat.x);
+    auto u_view_mat = m_final_shader->QueryUniform("u_view_mat");
+    assert(u_view_mat);
+    u_view_mat->SetValue(view_mat.x, 4 * 4);
 
     auto scale = m_scale / static_cast<float>(std::pow(2, finer_layer));
-    m_final_shader->SetFloat("u_scale", scale);
+    auto u_scale = m_final_shader->QueryUniform("u_scale");
+    assert(u_scale);
+    u_scale->SetValue(&scale, 1);
+
     auto offset = m_offset / TEX_SIZE / static_cast<float>(std::pow(2, finer_layer));
-    m_final_shader->SetVec2("u_offset", offset.xy);
+    auto u_offset = m_final_shader->QueryUniform("u_offset");
+    assert(u_offset);
+    u_offset->SetValue(offset.xy, 2);
 
-    rc.RenderQuad(ur::RenderContext::VertLayout::VL_POS, true);
-
-    rc.BindShader(0);
+    ur2::DrawState ds;
+    ds.render_state = rs;
+    ds.program = m_final_shader;
+    ctx.DrawQuad(ur2::Context::VertexLayout::Pos, ds);
 }
 
-void TextureStack::DrawDebug() const
+void TextureStack::DrawDebug(const ur2::Device& dev, ur2::Context& ctx, const ur2::RenderState& rs) const
 {
     tess::Painter pt;
 
@@ -369,7 +382,7 @@ void TextureStack::DrawDebug() const
 
         const float x = sx + (size + space) * i;
         sm::rect region(x, sy, x + size, sy + size);
-        pt2::RenderSystem::DrawTexture(*layer.tex, region, sm::Matrix2D(), false);
+        pt2::RenderSystem::DrawTexture(dev, ctx, rs, layer.tex, region, sm::Matrix2D(), false);
 
         // border
         pt.AddRect(sm::vec2(region.xmin, region.ymin), sm::vec2(region.xmax, region.ymax), 0xff00ff00);
@@ -394,15 +407,17 @@ void TextureStack::DrawDebug() const
         pt.AddRect(r_min, r_max, color);
     }
 
-    pt2::RenderSystem::DrawPainter(pt);
+    pt2::RenderSystem::DrawPainter(dev, ctx, rs, pt);
 }
 
-void TextureStack::TraverseDiffPages(const sm::rect& new_r, size_t start_layer,
+void TextureStack::TraverseDiffPages(const std::vector<sm::rect>& regions, size_t start_layer,
                                      std::function<void(const textile::Page& page, const sm::rect& region)> cb)
 {
+    assert(regions.size() == m_layers.size() - start_layer);
     for (size_t i = start_layer, n = m_layers.size(); i < n; ++i)
     {
         auto& old_r = m_layers[i].region;
+        auto& new_r = regions[i - start_layer];
         if (sm::is_rect_contain_rect(old_r, new_r)) {
             continue;
         }

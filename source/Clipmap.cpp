@@ -12,14 +12,15 @@ Clipmap::Clipmap(const std::string& filepath, const textile::VTexInfo& info)
 {
 }
 
-void Clipmap::Init()
+void Clipmap::Init(const ur2::Device& dev)
 {
-    m_stack.Init();
+    m_stack.Init(dev);
 }
 
-void Clipmap::Update(float scale, const sm::vec2& offset)
+void Clipmap::Update(const ur2::Device& dev, ur2::Context& ctx,
+                     float scale, const sm::vec2& offset)
 {
-    m_stack.Update(m_cache, m_viewport, scale, offset);
+    m_stack.Update(dev, ctx, m_cache, m_viewport, scale, offset);
 }
 
 void Clipmap::GetRegion(float& scale, sm::vec2& offset) const
@@ -27,14 +28,15 @@ void Clipmap::GetRegion(float& scale, sm::vec2& offset) const
     m_stack.GetRegion(scale, offset);
 }
 
-void Clipmap::Draw(float screen_width, float screen_height) const
+void Clipmap::Draw(const ur2::Device& dev, ur2::Context& ctx,
+                   float screen_width, float screen_height) const
 {
-    m_stack.Draw(screen_width, screen_height);
+    m_stack.Draw(dev, ctx, screen_width, screen_height);
 }
 
-void Clipmap::DebugDraw() const
+void Clipmap::DebugDraw(const ur2::Device& dev, ur2::Context& ctx) const
 {
-    m_stack.DebugDraw();
+    m_stack.DebugDraw(dev, ctx);
 }
 
 }
