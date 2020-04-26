@@ -312,7 +312,8 @@ void TextureStack::AddPage(const ur2::Device& dev, ur2::Context& ctx, const text
     ur2::DrawState ds;
     ds.render_state = ur2::DefaultRenderState2D();
     ds.program = m_update_shader;
-    ctx.DrawQuad(ur2::Context::VertexLayout::Pos, ds);
+    ds.vertex_array = dev.GetVertexArray(ur2::Device::PrimitiveType::Quad, ur2::VertexLayoutType::Pos);
+    ctx.Draw(ur2::PrimitiveType::TriangleStrip, ds, nullptr);
 }
 
 void TextureStack::DrawTexture(const ur2::Device& dev, ur2::Context& ctx, const ur2::RenderState& rs,
@@ -350,7 +351,8 @@ void TextureStack::DrawTexture(const ur2::Device& dev, ur2::Context& ctx, const 
     ur2::DrawState ds;
     ds.render_state = rs;
     ds.program = m_final_shader;
-    ctx.DrawQuad(ur2::Context::VertexLayout::Pos, ds);
+    ds.vertex_array = dev.GetVertexArray(ur2::Device::PrimitiveType::Quad, ur2::VertexLayoutType::Pos);
+    ctx.Draw(ur2::PrimitiveType::TriangleStrip, ds, nullptr);
 }
 
 void TextureStack::DrawDebug(const ur2::Device& dev, ur2::Context& ctx, const ur2::RenderState& rs) const
