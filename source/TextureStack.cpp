@@ -11,6 +11,7 @@
 #include <unirender2/Context.h>
 #include <unirender2/Uniform.h>
 #include <unirender2/DrawState.h>
+#include <unirender2/Factory.h>
 #include <painting2/RenderSystem.h>
 #include <textile/VTexInfo.h>
 #include <textile/Page.h>
@@ -218,16 +219,7 @@ void TextureStack::Draw(const ur2::Device& dev, ur2::Context& ctx,
         return;
     }
 
-    ur2::RenderState rs;
-    rs.depth_test.enabled = false;
-    rs.facet_culling.enabled = false;
-
-    rs.blending.enabled = true;
-    rs.blending.separately = false;
-    rs.blending.src = ur2::BlendingFactor::One;
-    rs.blending.dst = ur2::BlendingFactor::OneMinusSrcAlpha;
-    rs.blending.equation = ur2::BlendEquation::Add;
-
+    auto rs = ur2::DefaultRenderState2D();
     DrawTexture(dev, ctx, rs, screen_width, screen_height);
     DrawDebug(dev, ctx, rs);
 }
@@ -239,16 +231,7 @@ void TextureStack::DebugDraw(const ur2::Device& dev, ur2::Context& ctx) const
         return;
     }
 
-    ur2::RenderState rs;
-    rs.depth_test.enabled = false;
-    rs.facet_culling.enabled = false;
-
-    rs.blending.enabled = true;
-    rs.blending.separately = false;
-    rs.blending.src = ur2::BlendingFactor::One;
-    rs.blending.dst = ur2::BlendingFactor::OneMinusSrcAlpha;
-    rs.blending.equation = ur2::BlendEquation::Add;
-
+    auto rs = ur2::DefaultRenderState2D();
     DrawDebug(dev, ctx, rs);
 }
 
@@ -292,16 +275,6 @@ void TextureStack::AddPage(const ur2::Device& dev, ur2::Context& ctx, const text
     ctx.SetFramebuffer(m_fbo);
     m_fbo->SetAttachment(ur2::AttachmentType::Color0, ur2::TextureTarget::Texture2D, layer.tex, nullptr);
 
-    ur2::RenderState rs;
-    rs.depth_test.enabled = false;
-    rs.facet_culling.enabled = false;
-
-    rs.blending.enabled = true;
-    rs.blending.separately = false;
-    rs.blending.src = ur2::BlendingFactor::One;
-    rs.blending.dst = ur2::BlendingFactor::OneMinusSrcAlpha;
-    rs.blending.equation = ur2::BlendEquation::Add;
-
     ctx.SetTexture(m_update_shader->QueryTexSlot("page_map"), tex);
 
     auto u_page_scale = m_update_shader->QueryUniform("u_page_scale");
@@ -337,7 +310,7 @@ void TextureStack::AddPage(const ur2::Device& dev, ur2::Context& ctx, const text
     u_update_offset->SetValue(tile_update_offset.xy, 2);
 
     ur2::DrawState ds;
-    ds.render_state = rs;
+    ds.render_state = ur2::DefaultRenderState2D();
     ds.program = m_update_shader;
     ctx.DrawQuad(ur2::Context::VertexLayout::Pos, ds);
 }
