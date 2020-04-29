@@ -3,15 +3,15 @@
 
 #include <SM_Calc.h>
 #include <tessellation/Painter.h>
-#include <unirender2/Device.h>
-#include <unirender2/TextureDescription.h>
-#include <unirender2/Framebuffer.h>
-#include <unirender2/ShaderProgram.h>
-#include <unirender2/RenderState.h>
-#include <unirender2/Context.h>
-#include <unirender2/Uniform.h>
-#include <unirender2/DrawState.h>
-#include <unirender2/Factory.h>
+#include <unirender/Device.h>
+#include <unirender/TextureDescription.h>
+#include <unirender/Framebuffer.h>
+#include <unirender/ShaderProgram.h>
+#include <unirender/RenderState.h>
+#include <unirender/Context.h>
+#include <unirender/Uniform.h>
+#include <unirender/DrawState.h>
+#include <unirender/Factory.h>
 #include <painting2/RenderSystem.h>
 #include <textile/VTexInfo.h>
 #include <textile/Page.h>
@@ -123,7 +123,7 @@ TextureStack::TextureStack(const textile::VTexInfo& info)
     m_layers.resize(mip_count);
 }
 
-void TextureStack::Init(const ur2::Device& dev)
+void TextureStack::Init(const ur::Device& dev)
 {
     if (m_layers[0].tex) {
         return;
@@ -137,11 +137,11 @@ void TextureStack::Init(const ur2::Device& dev)
     auto h = m_vtex_info.vtex_height;
     for (auto& layer : m_layers)
     {
-        ur2::TextureDescription desc;
-        desc.target = ur2::TextureTarget::Texture2D;
+        ur::TextureDescription desc;
+        desc.target = ur::TextureTarget::Texture2D;
         desc.width = TEX_SIZE;
         desc.height = TEX_SIZE;
-        desc.format = ur2::TextureFormat::RGBA8;
+        desc.format = ur::TextureFormat::RGBA8;
         layer.tex = dev.CreateTexture(desc, filling);
     }
 
@@ -157,7 +157,7 @@ void TextureStack::Init(const ur2::Device& dev)
     }
 }
 
-void TextureStack::Update(const ur2::Device& dev, ur2::Context& ctx,
+void TextureStack::Update(const ur::Device& dev, ur::Context& ctx,
                           PageCache& cache, const sm::rect& viewport,
                           float scale, const sm::vec2& offset)
 {
@@ -211,7 +211,7 @@ void TextureStack::Update(const ur2::Device& dev, ur2::Context& ctx,
     }
 }
 
-void TextureStack::Draw(const ur2::Device& dev, ur2::Context& ctx,
+void TextureStack::Draw(const ur::Device& dev, ur::Context& ctx,
                         float screen_width, float screen_height) const
 {
     assert(!m_layers.empty());
@@ -219,19 +219,19 @@ void TextureStack::Draw(const ur2::Device& dev, ur2::Context& ctx,
         return;
     }
 
-    auto rs = ur2::DefaultRenderState2D();
+    auto rs = ur::DefaultRenderState2D();
     DrawTexture(dev, ctx, rs, screen_width, screen_height);
     DrawDebug(dev, ctx, rs);
 }
 
-void TextureStack::DebugDraw(const ur2::Device& dev, ur2::Context& ctx) const
+void TextureStack::DebugDraw(const ur::Device& dev, ur::Context& ctx) const
 {
     assert(!m_layers.empty());
     if (!m_layers[0].tex) {
         return;
     }
 
-    auto rs = ur2::DefaultRenderState2D();
+    auto rs = ur::DefaultRenderState2D();
     DrawDebug(dev, ctx, rs);
 }
 
@@ -255,8 +255,8 @@ size_t TextureStack::CalcMipmapLevel(int level_num, float scale)
     return static_cast<size_t>(std::ceil(level));
 }
 
-void TextureStack::AddPage(const ur2::Device& dev, ur2::Context& ctx, const textile::Page& page,
-                           const ur2::TexturePtr& tex, const sm::rect& region)
+void TextureStack::AddPage(const ur::Device& dev, ur::Context& ctx, const textile::Page& page,
+                           const ur::TexturePtr& tex, const sm::rect& region)
 {
     if (!region.IsValid() || region.Width() == 0 || region.Height() == 0) {
         return;
@@ -273,7 +273,7 @@ void TextureStack::AddPage(const ur2::Device& dev, ur2::Context& ctx, const text
     ctx.SetViewport(0, 0, TEX_SIZE, TEX_SIZE);
 
     ctx.SetFramebuffer(m_fbo);
-    m_fbo->SetAttachment(ur2::AttachmentType::Color0, ur2::TextureTarget::Texture2D, layer.tex, nullptr);
+    m_fbo->SetAttachment(ur::AttachmentType::Color0, ur::TextureTarget::Texture2D, layer.tex, nullptr);
 
     ctx.SetTexture(m_update_shader->QueryTexSlot("page_map"), tex);
 
@@ -309,14 +309,14 @@ void TextureStack::AddPage(const ur2::Device& dev, ur2::Context& ctx, const text
     auto tile_update_offset = update_offset / layer_tile_sz;
     u_update_offset->SetValue(tile_update_offset.xy, 2);
 
-    ur2::DrawState ds;
-    ds.render_state = ur2::DefaultRenderState2D();
+    ur::DrawState ds;
+    ds.render_state = ur::DefaultRenderState2D();
     ds.program = m_update_shader;
-    ds.vertex_array = dev.GetVertexArray(ur2::Device::PrimitiveType::Quad, ur2::VertexLayoutType::Pos);
-    ctx.Draw(ur2::PrimitiveType::TriangleStrip, ds, nullptr);
+    ds.vertex_array = dev.GetVertexArray(ur::Device::PrimitiveType::Quad, ur::VertexLayoutType::Pos);
+    ctx.Draw(ur::PrimitiveType::TriangleStrip, ds, nullptr);
 }
 
-void TextureStack::DrawTexture(const ur2::Device& dev, ur2::Context& ctx, const ur2::RenderState& rs,
+void TextureStack::DrawTexture(const ur::Device& dev, ur::Context& ctx, const ur::RenderState& rs,
                                float screen_width, float screen_height) const
 {
     if (!m_final_shader)
@@ -348,14 +348,14 @@ void TextureStack::DrawTexture(const ur2::Device& dev, ur2::Context& ctx, const 
     assert(u_offset);
     u_offset->SetValue(offset.xy, 2);
 
-    ur2::DrawState ds;
+    ur::DrawState ds;
     ds.render_state = rs;
     ds.program = m_final_shader;
-    ds.vertex_array = dev.GetVertexArray(ur2::Device::PrimitiveType::Quad, ur2::VertexLayoutType::Pos);
-    ctx.Draw(ur2::PrimitiveType::TriangleStrip, ds, nullptr);
+    ds.vertex_array = dev.GetVertexArray(ur::Device::PrimitiveType::Quad, ur::VertexLayoutType::Pos);
+    ctx.Draw(ur::PrimitiveType::TriangleStrip, ds, nullptr);
 }
 
-void TextureStack::DrawDebug(const ur2::Device& dev, ur2::Context& ctx, const ur2::RenderState& rs) const
+void TextureStack::DrawDebug(const ur::Device& dev, ur::Context& ctx, const ur::RenderState& rs) const
 {
     tess::Painter pt;
 

@@ -19,15 +19,15 @@ class Clipmap : private boost::noncopyable
 public:
     Clipmap(const std::string& filepath, const textile::VTexInfo& info);
 
-    void Init(const ur2::Device& dev);
+    void Init(const ur::Device& dev);
 
-    void Update(const ur2::Device& dev, ur2::Context& ctx,
+    void Update(const ur::Device& dev, ur::Context& ctx,
         float scale, const sm::vec2& offset);
     void GetRegion(float& scale, sm::vec2& offset) const;
 
-    void Draw(const ur2::Device& dev, ur2::Context& ctx,
+    void Draw(const ur::Device& dev, ur::Context& ctx,
         float screen_width, float screen_height) const;
-    void DebugDraw(const ur2::Device& dev, ur2::Context& ctx) const;
+    void DebugDraw(const ur::Device& dev, ur::Context& ctx) const;
 
     auto& GetAllLayers() const { return m_stack.GetAllLayers(); }
     size_t GetStackTexSize() const { return m_stack.GetTextureSize(); }

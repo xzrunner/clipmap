@@ -1,8 +1,8 @@
 #include "clipmap/PageCache.h"
 #include "clipmap/TextureStack.h"
 
-#include <unirender2/Device.h>
-#include <unirender2/TextureDescription.h>
+#include <unirender/Device.h>
+#include <unirender/TextureDescription.h>
 #include <textile/PageIndexer.h>
 #include <textile/PageLoader.h>
 
@@ -31,7 +31,7 @@ PageCache::~PageCache()
     delete[] m_page_buf;
 }
 
-void PageCache::LoadComplete(const ur2::Device& dev, const textile::Page& page, const uint8_t* data)
+void PageCache::LoadComplete(const ur::Device& dev, const textile::Page& page, const uint8_t* data)
 {
     if (m_lru.Size() == CAPACITY)
     {
@@ -49,13 +49,13 @@ void PageCache::LoadComplete(const ur2::Device& dev, const textile::Page& page, 
     });
 }
 
-ur2::TexturePtr PageCache::QueryPageTex(const textile::Page& page) const
+ur::TexturePtr PageCache::QueryPageTex(const textile::Page& page) const
 {
     auto itr = m_map_page2tex.find(m_indexer.CalcPageIdx(page));
     return itr == m_map_page2tex.end() ? nullptr : itr->second;
 }
 
-ur2::TexturePtr PageCache::CreatePageTex(const ur2::Device& dev, const uint8_t* data) const
+ur::TexturePtr PageCache::CreatePageTex(const ur::Device& dev, const uint8_t* data) const
 {
     auto& info = m_loader.GetVTexInfo();
     assert(info.bytes == 1);
@@ -75,20 +75,20 @@ ur2::TexturePtr PageCache::CreatePageTex(const ur2::Device& dev, const uint8_t* 
 
     //auto tex = std::make_shared<ur::Texture>();
 
-    ur2::TextureDescription desc;
-    desc.target = ur2::TextureTarget::Texture2D;
+    ur::TextureDescription desc;
+    desc.target = ur::TextureTarget::Texture2D;
     desc.width = info.tile_size;
     desc.height = info.tile_size;
     switch (info.channels)
     {
     case 1:
-        desc.format = ur2::TextureFormat::RED;
+        desc.format = ur::TextureFormat::RED;
         break;
     case 3:
-        desc.format = ur2::TextureFormat::RGB;
+        desc.format = ur::TextureFormat::RGB;
         break;
     case 4:
-        desc.format = ur2::TextureFormat::RGBA8;
+        desc.format = ur::TextureFormat::RGBA8;
         break;
     default:
         assert(0);
