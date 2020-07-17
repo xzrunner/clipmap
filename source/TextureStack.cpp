@@ -12,6 +12,7 @@
 #include <unirender/Uniform.h>
 #include <unirender/DrawState.h>
 #include <unirender/Factory.h>
+#include <shadertrans/ShaderTrans.h>
 #include <painting2/RenderSystem.h>
 #include <textile/VTexInfo.h>
 #include <textile/Page.h>
@@ -153,7 +154,10 @@ void TextureStack::Init(const ur::Device& dev)
         //std::vector<std::string> textures;
         //textures.push_back("page_map");
 
-        m_update_shader = dev.CreateShaderProgram(update_vs, update_fs);
+        std::vector<unsigned int> vs, fs;
+        shadertrans::ShaderTrans::GLSL2SpirV(shadertrans::ShaderStage::VertexShader, update_vs, vs);
+        shadertrans::ShaderTrans::GLSL2SpirV(shadertrans::ShaderStage::PixelShader, update_fs, fs);
+        m_update_shader = dev.CreateShaderProgram(vs, fs);
     }
 }
 
@@ -325,7 +329,10 @@ void TextureStack::DrawTexture(const ur::Device& dev, ur::Context& ctx, const ur
         //textures.push_back("finer_tex");
         //textures.push_back("coarser_tex");
 
-        m_final_shader = dev.CreateShaderProgram(final_vs, final_fs);
+        std::vector<unsigned int> vs, fs;
+        shadertrans::ShaderTrans::GLSL2SpirV(shadertrans::ShaderStage::VertexShader, final_vs, vs);
+        shadertrans::ShaderTrans::GLSL2SpirV(shadertrans::ShaderStage::PixelShader, final_fs, fs);
+        m_final_shader = dev.CreateShaderProgram(vs, fs);
     }
 
     const uint32_t finer_layer = CalcMipmapLevel(m_layers.size(), m_scale);
